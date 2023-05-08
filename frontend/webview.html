@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <link href="__CSS_PATH__" rel="stylesheet">
+    <script src="__VUE_PATH__"></script>
+    <script src="__AXIOS_PATH__"></script>
+    <style>
+        @font-face {
+            font-family: 'Cairo';
+            font-style: normal;
+            font-weight: 400;
+            src: url('__CAIRO_REGULAR_PATH__') format('truetype');
+        }
+
+        @font-face {
+            font-family: 'Cairo';
+            font-style: normal;
+            font-weight: 700;
+            src: url('__CAIRO_BOLD_PATH__') format('truetype');
+        }
+    </style>
+    <link href="__MAIN_CSS_PATH__" rel="stylesheet">
+</head>
+
+<body class="bg-gray-100 text-black">
+
+    <div id="app" class="bg-gray-100 min-h-screen">
+        <header class="text-white py-4 px-6 mb-4 bg-green-500" v-if="connected">
+            <h1 class="text-2xl">Local Mail Server</h1>
+        </header>
+
+        <header class="text-white py-4 px-6 mb-4 bg-red-500" v-else>
+            <h1 class="text-2xl">Local Mail Server</h1>
+        </header>
+
+        <div class="container mx-auto px-6">
+            <div v-if="!showDetails">
+                <button @click="fetchAllMessages"
+                    class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mb-4">Refresh</button>
+                <button @click="deleteAllMessages"
+                    class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded mb-4">Clear All</button>
+                <input v-model="search" type="text" class="border px-4 py-2 mb-4 w-full" placeholder="Search emails">
+
+                <div class="mb-4">
+                    <span>Showing {{ paginatedEmails.length }} of {{ filteredEmails.length }} emails</span>
+                </div>
+
+                <table class="table-auto w-full mb-6">
+                    <thead>
+                        <tr>
+                            <th class="px-4 py-2">From</th>
+                            <th class="px-4 py-2">To</th>
+                            <th class="px-4 py-2">Subject</th>
+                            <th class="px-4 py-2">Date</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="email in paginatedEmails" :key="email.id" class="hover:bg-gray-100 odd:bg-gray-100"
+                            @click="showEmailDetails(email)">
+                            <td class="border px-4 py-2">{{ email.from }}</td>
+                            <td class="border px-4 py-2">{{ email.to.join(', ') }}</td>
+                            <td class="border px-4 py-2">{{ email.subject }}</td>
+                            <td class="border px-4 py-2">{{ formatDate(email.date) }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <div class="flex justify-between mb-4">
+                    <button @click="prevPage" :disabled="currentPage === 0"
+                        class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Previous</button>
+                    <span>Page {{ currentPage + 1 }} of {{ totalPages }}</span>
+                    <button @click="nextPage" :disabled="currentPage === totalPages - 1"
+                        class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Next</button>
+                </div>
+            </div>
+
+            <div v-else>
+                <div class="bg-white shadow-xl rounded-lg p-6 mb-4">
+                    <button @click="hideEmailDetails"
+                        class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mb-4">Back</button>
+                    <h2 class="text-2xl font-bold mb-4">{{ details.subject }}</h2>
+                    <div class="mb-4">
+                        <span class="font-bold">From:</span> {{ details.from }}
+                    </div>
+                    <div class="mb-4">
+                        <span class="font-bold">To:</span> {{ details.to ? details.to.join(', ') : 'N/A' }}
+                    </div>
+                    <div class="mb-4">
+                        <span class="font-bold">Date:</span> {{ formatDate(details.date) }}
+                    </div>
+                    <div class="mb-4">
+                        <span class="font-bold">To:</span> {{ details.to ? details.to.join(', ') : 'N/A' }}
+                    </div>
+
+                    <div v-html="details.body" class="border p-4"></div>
+                    <button @click="deleteMessage(details.id)"
+                        class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded mt-4">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+        const vscode = acquireVsCodeApi();
+
+        const app = new Vue({
+            el: '#app',
+            data: {
+                emails: [],
+                totalMessages: 0,
+                currentPage: 0,
+                perPage: 10,
+                search: '',
+                showDetails: false,
+                details: null,
+                connected: true,
+            },
+            computed: {
+                totalPages: function () {
+                    return Math.ceil(this.filteredEmails.length / this.perPage);
+                },
+                filteredEmails: function () {
+                    return this.emails.filter(e => {
+                        return e.subject.toLowerCase().includes(this.search.toLowerCase()) || e.from.toLowerCase().includes(this.search.toLowerCase()) || e.to.join(', ').toLowerCase().includes(this.search.toLowerCase());
+                    });
+                },
+                paginatedEmails: function () {
+                    const start = this.currentPage * this.perPage;
+                    const end = start + this.perPage;
+                    return this.filteredEmails.slice(start, end);
+                },
+            },
+            methods: {
+                fetchEmails() {
+                    axios
+                        .get('http://localhost:1234/api/v2/messages')
+                        .then((response) => {
+                            const messages = response.data.items;
+                            this.emails = messages.map((msg) => {
+                                return {
+                                    id: msg.ID,
+                                    from: msg.Content.Headers.From[0],
+                                    to: msg.Content.Headers.To,
+                                    subject: msg.Content.Headers.Subject[0],
+                                    date: msg.Content.Headers['Date'][0],
+                                    body: msg.Content.Body,
+                                };
+                            }).reverse();
+                        })
+                        .catch((error) => {
+                            console.error('Error fetching emails:', error);
+                        });
+                },
+                formatDate(dateString) {
+                    const date = new Date(dateString);
+                    return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+                },
+                fetchAllMessages() {
+                    this.fetchEmails();
+                },
+                deleteMessage(id) {
+                    axios
+                        .delete(`http://localhost:1234/api/v1/messages/${id}`)
+                        .then((response) => {
+                            this.fetchEmails();
+                            this.hideEmailDetails();
+                        })
+                        .catch((error) => {
+                            console.error('Error deleting email:', error);
+                        });
+                },
+                deleteAllMessages() {
+                    axios
+                        .delete(`http://localhost:1234/api/v1/messages`)
+                        .then((response) => {
+                            this.fetchEmails();
+                            this.hideEmailDetails();
+                        })
+                        .catch((error) => {
+                            console.error('Error deleting email:', error);
+                        });
+                },
+                nextPage() {
+                    if (this.currentPage < this.totalPages - 1) {
+                        this.currentPage++;
+                    }
+                },
+                prevPage() {
+                    if (this.currentPage > 0) {
+                        this.currentPage--;
+                    }
+                },
+                showEmailDetails(email) {
+                    this.details = {
+                        subject: email.subject,
+                        from: email.from,
+                        to: email.to,
+                        date: email.date,
+                        body: email.body,
+                        id: email.id,
+                    };
+                    this.showDetails = true;
+                },
+                hideEmailDetails() {
+                    this.showDetails = false;
+                },
+                addEmail(emailData) {
+                    const newEmail = {
+                        id: emailData.ID,
+                        from: emailData.Content.Headers.From[0],
+                        to: emailData.Content.Headers.To,
+                        subject: emailData.Content.Headers.Subject[0],
+                        date: emailData.Content.Headers['Date'][0],
+                        body: emailData.Content.Body
+                    };
+                    this.emails.unshift(newEmail);
+                },
+            },
+            mounted() {
+                this.fetchEmails();
+            },
+        });
+
+        window.addEventListener('message', (event) => {
+            const msg = event.data;
+            if (msg.command == "newEmail") {
+                app.addEmail(msg.email);
+            } else if (msg.command == "connectionStatus") {
+                app.connected = msg.conected;
+            } else if (msg.command == "openMailDetails") {
+                app.showEmailDetails(msg.email);
+            }
+        });
+    </script>
+</body>
+
+</html>

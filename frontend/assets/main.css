@@ -1,0 +1,11 @@
+body {
+  font-family: 'Cairo', sans-serif;
+}
+
+.mail-item {
+  cursor: pointer;
+}
+
+.mail-item:hover {
+  background-color: #f3f4f6;
+}

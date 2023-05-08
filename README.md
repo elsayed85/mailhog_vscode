@@ -1,1 +1,1 @@
-Debug You Laravel app inside VSCode
+Show Emails inside vscode with mailhog server
